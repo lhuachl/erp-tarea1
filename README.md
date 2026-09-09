@@ -20,3 +20,19 @@ La planificación vive en [`docs/`](docs/), versionada. Los artefactos generados
 ## Stack
 
 Rails 8.1 · PostgreSQL (Supabase) · Vite + React + Mantine · Devise (roles admin/operador) · RSpec + cucumber-rails + mutant.
+
+## Setup
+
+```sh
+cp .env.example .env   # completar DATABASE_URL de Supabase
+./bin/install-hooks
+bundle install
+npm install
+DATABASE_URL="$DATABASE_URL_MIGRATE" bin/rails db:prepare
+RAILS_ENV=test DATABASE_URL="$DATABASE_URL_MIGRATE" bin/rails db:schema:load
+bin/dev
+```
+
+> Nota: los tests corren sobre el mismo database de Supabase pero aislados en el
+> schema `test` (`schema_search_path`). Nunca se dropea la base; las tablas
+> `test.*` son independientes de `public.*`.
