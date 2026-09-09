@@ -1,0 +1,29 @@
+# PostgreSQL en la nube (Supabase) via DATABASE_URL.
+#
+# Runtime: transaction pooler (puerto 5432) -> prepared_statements: false
+#   (PgBouncer en modo transaccional no soporta prepared statements entre conexiones).
+#
+# Migraciones / psql: usar el session pooler (puerto 6543), p. ej.:
+#   DATABASE_URL="$DATABASE_URL_MIGRATE" bin/rails db:migrate
+#
+# Tests: corren sobre el MISMO database de Supabase pero aislados en el schema
+#   "test" (schema_search_path). Nunca se dropea la base; db:schema:load/migrate
+#   en RAILS_ENV=test solo toca tablas del schema test.
+
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  url: <%= ENV.fetch("DATABASE_URL") %>
+  prepared_statements: false
+  max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+
+development:
+  <<: *default
+  schema_search_path: public
+
+test:
+  <<: *default
+  schema_search_path: test
+
+production:
+  <<: *default
