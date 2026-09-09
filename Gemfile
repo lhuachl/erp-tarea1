@@ -14,6 +14,8 @@ gem "jbuilder"
 gem "vite_rails"
 # Autenticacion
 gem "devise"
+# json 3.0.2 rompe ActiveSupport::JSON.decode (firma keyword-only vs hash posicional); 2.18 es el default de Ruby 4.0.6
+gem "json", "~> 2.18"
 # Use Redis adapter to run Action Cable in production
 # gem "redis", ">= 4.0.1"
 
