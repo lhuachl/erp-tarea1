@@ -1,0 +1,11 @@
+{
+  "name": "docs-build",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Genera HTML y PDF a partir de docs/*.md",
+  "type": "module",
+  "dependencies": {
+    "marked": "^14.1.2",
+    "puppeteer-core": "^23.5.0"
+  }
+}

@@ -1,0 +1,5 @@
+#!/bin/sh
+set -e
+cd "$(dirname "$0")/../tools/docs"
+[ -d node_modules ] || npm install --no-audit --no-fund
+node build.mjs
