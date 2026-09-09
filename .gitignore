@@ -1,0 +1,10 @@
+# docs generados (build)
+docs/out/
+
+# node
+node_modules/
+
+# secrets
+.env
+.env.*
+*.local

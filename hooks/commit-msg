@@ -1,0 +1,17 @@
+#!/bin/sh
+# Enforce conventional commits sin dependencias.
+# Copiar/instalar via bin/install-hooks o enlazar a .git/hooks/commit-msg
+
+COMMIT_MSG_FILE="$1"
+
+PATTERN='^(feat|fix|docs|chore|build|refactor|style|test|perf|revert|ci)(\([a-z0-9_-]+\))?!?: [A-Za-z0-9].{1,100}$'
+
+if ! grep -qE "$PATTERN" "$COMMIT_MSG_FILE"; then
+  echo "error: mensaje de commit no sigue conventional commits" >&2
+  echo "formato: tipo(alcance): descripcion" >&2
+  echo "tipos: feat|fix|docs|chore|build|refactor|style|test|perf|revert|ci" >&2
+  echo "ejemplo: feat(agile): registrar daily snapshot para burndown" >&2
+  exit 1
+fi
+
+exit 0
