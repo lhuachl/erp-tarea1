@@ -4,6 +4,9 @@ docs/out/
 # node
 node_modules/
 
+# mutant
+/.mutant/
+
 # secrets
 .env
 .env.*

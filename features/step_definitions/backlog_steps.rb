@@ -75,11 +75,7 @@ Entonces(/^el error tiene código "([^"]+)"$/) do |codigo|
   expect(respuesta_json["errors"].first["code"]).to eq(codigo)
 end
 
-Entonces(/^la historia queda en estado "([^"]+)"$/) do |estado|
-  expect(@historia.reload.estado).to eq(estado)
-end
-
-Entonces(/^la historia permanece en estado "([^"]+)"$/) do |estado|
+Entonces(/^la historia (?:queda|permanece) en estado "([^"]+)"$/) do |estado|
   expect(@historia.reload.estado).to eq(estado)
 end
 

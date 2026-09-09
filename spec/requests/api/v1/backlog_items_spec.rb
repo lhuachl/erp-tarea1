@@ -2,6 +2,14 @@ require "rails_helper"
 
 RSpec.describe "Api::V1::BacklogItems", type: :request do
   describe "POST /api/v1/backlog_items" do
+    # Contrato tabla de errores: JSON malformado -> 400 malformed_request
+    it "devuelve 400 malformed_request con shape JSON API si el body no es JSON" do
+      post "/api/v1/backlog_items", params: "{esto no es json", headers: { "CONTENT_TYPE" => "application/json" }
+      expect(response).to have_http_status(:bad_request)
+      error = JSON.parse(response.body)["errors"].first
+      expect(error).to include("status" => "400", "code" => "malformed_request")
+    end
+
     # Contrato invariante 1: campos calculados nunca se aceptan del cliente
     %w[wsjf cod_profile].each do |campo|
       it "rechaza #{campo} con 422 readonly_field" do

@@ -3,8 +3,8 @@ class BacklogItem < ApplicationRecord
   ESTADOS = %w[backlog listo en_sprint done].freeze
   TRANSICIONES = { "backlog" => "listo", "listo" => "en_sprint", "en_sprint" => "done" }.freeze
 
-  # Regla CoD (documentada en specs/agile/backlog.feature): expedite si wsjf muy alto,
-  # fixed_date si criticidad temporal alta, standard si wsjf medio, intangible si bajo.
+  # Regla CoD: expedite si wsjf muy alto, fixed_date si criticidad temporal alta,
+  # standard si wsjf medio, intangible si bajo. Detalle cubierto en backlog_item_spec.
   WSJF_EXPEDITE = 20
   WSJF_STANDARD = 5
   TIME_CRITICALITY_ALTA = 8
