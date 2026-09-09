@@ -10,7 +10,8 @@ Dominio: agile. Frontera del módulo con el resto del sistema y con clientes HTT
 ## Runner BDD y mutación (fijados por stack del repo)
 
 - Runner BDD: `cucumber-rails` (features Gherkin en `features/`, ya declarado en `Gemfile` grupo `:test`).
-- Herramienta de mutación: `mutant` + `mutant-rspec` (grupo `:development, :test` del `Gemfile`).
+- Herramienta de mutación: `mutant` + `mutant-rspec` (grupo `:development, :test` del `Gemfile`). Comando real (requiere `--usage opensource`):
+  `RAILS_ENV=test bundle exec mutant run --usage opensource --include app --include config --require environment --use rspec "ClaseEnElDiff"`
 - Los tests BDD se acotan a `features/` y se rastrean a escenarios `@S-AGL-nn` (ver [Escenarios](#escenarios-gherkin-que-ejercitan-este-contrato)).
 
 ## Endpoints de API (base `/api/v1`)
