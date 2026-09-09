@@ -18,6 +18,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_213100) do
   enable_extension "pg_catalog.plpgsql"
   enable_extension "vault.supabase_vault"
 
+  create_table "backlog_items", force: :cascade do |t|
+    t.integer "cod_duration", default: 0, null: false
+    t.integer "cod_risk_reduction", default: 0, null: false
+    t.integer "cod_time_criticality", default: 0, null: false
+    t.integer "cod_value", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.string "descripcion", default: "", null: false
+    t.string "estado", default: "backlog", null: false
+    t.string "prioridad", default: "media", null: false
+    t.integer "story_points", null: false
+    t.string "titulo", null: false
+    t.datetime "updated_at", null: false
+  end
+
   create_table "users", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "email", default: "", null: false
