@@ -1,6 +1,5 @@
 # language: es
 # Contrato de negocio del módulo Inventario / insumos del dominio repostería.
-@wip
 Característica: Inventario de insumos
   Como equipo de repostería
   Quiero gestionar insumos y sus movimientos de stock
