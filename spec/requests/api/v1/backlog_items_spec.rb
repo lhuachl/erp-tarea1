@@ -75,4 +75,33 @@ RSpec.describe "Api::V1::BacklogItems", type: :request do
       expect(item.reload.estado).to eq("backlog")
     end
   end
+
+  describe "PATCH /api/v1/backlog_items/:id (asignación a sprint)" do
+    # Contrato Backlog actualizado: listo -> en_sprint exige un sprint_id válido
+    it "asigna el sprint al pasar a en_sprint" do
+      item = create(:backlog_item, estado: "listo")
+      sprint = create(:sprint)
+
+      patch "/api/v1/backlog_items/#{item.id}", params: { estado: "en_sprint", sprint_id: sprint.id }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(item.reload.estado).to eq("en_sprint")
+      expect(item.sprint_id).to eq(sprint.id)
+    end
+
+    it "rechaza en_sprint sin sprint_id" do
+      item = create(:backlog_item, estado: "listo")
+      patch "/api/v1/backlog_items/#{item.id}", params: { estado: "en_sprint" }, as: :json
+      expect(response).to have_http_status(422)
+      expect(JSON.parse(response.body)["errors"].first["code"]).to eq("validation_failed")
+      expect(item.reload.estado).to eq("listo")
+    end
+
+    it "rechaza un sprint_id inexistente" do
+      item = create(:backlog_item, estado: "listo")
+      patch "/api/v1/backlog_items/#{item.id}", params: { estado: "en_sprint", sprint_id: 999_999 }, as: :json
+      expect(response).to have_http_status(422)
+      expect(JSON.parse(response.body)["errors"].first["source"]["pointer"]).to eq("/sprint_id")
+      expect(item.reload.estado).to eq("listo")
+    end
+  end
 end

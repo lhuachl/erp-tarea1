@@ -85,7 +85,7 @@ RSpec.describe BacklogItem, type: :model do
       create(:backlog_item, titulo: "Inventario de harina", prioridad: "baja", cod_value: 8, cod_time_criticality: 5, cod_risk_reduction: 5, cod_duration: 2)
 
       expect(BacklogItem.sorted.map(&:titulo)).to eq(
-        ["Torta de cumpleaños", "Cobrar pedidos pendientes", "Reparto del turno tarde", "Inventario de harina"]
+        [ "Torta de cumpleaños", "Cobrar pedidos pendientes", "Reparto del turno tarde", "Inventario de harina" ]
       )
     end
   end
