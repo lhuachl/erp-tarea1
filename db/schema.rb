@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_10_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_10_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "extensions.pg_stat_statements"
   enable_extension "extensions.pgcrypto"
@@ -45,6 +45,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_120000) do
     t.index ["sprint_id"], name: "index_daily_snapshots_on_sprint_id"
   end
 
+  create_table "materials", force: :cascade do |t|
+    t.decimal "costo_unitario", default: "0.0", null: false
+    t.datetime "created_at", null: false
+    t.string "nombre", null: false
+    t.decimal "stock_actual", default: "0.0", null: false
+    t.decimal "stock_min", default: "0.0", null: false
+    t.string "unidad", null: false
+    t.datetime "updated_at", null: false
+    t.index ["nombre"], name: "index_materials_on_nombre", unique: true
+  end
+
   create_table "sprints", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "estado", default: "planning", null: false
@@ -53,6 +64,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_120000) do
     t.string "nombre", null: false
     t.string "objetivo", default: "", null: false
     t.datetime "updated_at", null: false
+  end
+
+  create_table "stock_movements", force: :cascade do |t|
+    t.decimal "cantidad", null: false
+    t.datetime "created_at", null: false
+    t.date "fecha", default: -> { "CURRENT_DATE" }, null: false
+    t.bigint "material_id", null: false
+    t.string "referencia"
+    t.string "tipo", null: false
+    t.datetime "updated_at", null: false
+    t.index ["material_id"], name: "index_stock_movements_on_material_id"
   end
 
   create_table "users", force: :cascade do |t|
@@ -71,4 +93,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_120000) do
 
   add_foreign_key "backlog_items", "sprints"
   add_foreign_key "daily_snapshots", "sprints"
+  add_foreign_key "stock_movements", "materials"
 end
