@@ -13,6 +13,10 @@ Rails.application.routes.draw do
         resources :stock_movements, only: %i[create]
       end
       resources :clients, only: %i[index show create update destroy]
+
+      get "prioritization/ranking", to: "prioritizations#ranking"
+      get "prioritization/matriz", to: "prioritizations#matriz"
+      get "prioritization/perfil", to: "prioritizations#perfil"
     end
   end
 
