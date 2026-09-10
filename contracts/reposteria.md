@@ -170,3 +170,134 @@ Spec: `specs/reposteria/inventario.feature`
 - `@S-REP-08` — `PATCH` edita `nombre`/`unidad`/`stock_min`/`costo_unitario` y conserva `stock_actual`.
 - `@S-REP-09` — `PATCH` con `stock_actual` → `422 readonly_field`, stock intacto.
 - `@S-REP-10` — listar insumos y obtener uno por id → `200` (más `404 not_found` vía [invariante 10](#invariantes)).
+
+---
+
+# Contrato del módulo Clientes
+
+Dominio: repostería. Frontera del módulo con el resto del sistema y con clientes HTTP.
+
+## Módulos que usan este contrato
+
+- Clientes HTTP del API (`/api/v1`) — frontend y consumidores externos.
+- Módulo Ventas / Pedidos (**futuro, no implementado**): asociará pedidos a clientes. Mientras la asociación no exista, el guard de borrado permanece dormido (ver [Invariantes](#invariantes-1), punto 7). Clientes no conoce pedidos; la relación es unidireccional.
+
+## Runner BDD y mutación (fijados por stack del repo)
+
+Mismos que el módulo Inventario en este archivo: runner `cucumber-rails` y mutación `mutant` + `mutant-rspec`. Ver [Runner BDD y mutación](#runner-bdd-y-mutación-fijados-por-stack-del-repo). Los tests BDD se acotan a `features/` y se rastrean a escenarios `@S-REP-nn`.
+
+## Endpoints de API (base `/api/v1`)
+
+| Método | Ruta                     | Descripción                                                              | Éxito |
+|--------|--------------------------|--------------------------------------------------------------------------|-------|
+| GET    | `/api/v1/clients`        | Lista de clientes. Con `?q=<texto>` filtra por `nombre` parcial (case-insensitive). | 200 |
+| GET    | `/api/v1/clients/:id`    | Obtiene un cliente por id.                                               | 200   |
+| POST   | `/api/v1/clients`        | Crea un cliente.                                                         | 201   |
+| PATCH  | `/api/v1/clients/:id`    | Edita campos editables (`nombre`, `telefono`, `email`, `direccion`, `notas`). | 200 |
+| DELETE | `/api/v1/clients/:id`    | Elimina un cliente (hard delete).                                        | 204   |
+
+`DELETE` exitoso no devuelve body.
+
+## Estructuras de datos
+
+### Client (cliente)
+
+| Campo      | Tipo    | Requerido | Default | Lectura | Escritura |
+|------------|---------|-----------|---------|---------|-----------|
+| `id`       | integer | —         | —       | sí      | no (solo lectura) |
+| `nombre`   | string  | sí        | —       | sí      | sí (POST y PATCH) |
+| `telefono` | string  | no        | `nil`   | sí      | sí (POST y PATCH) |
+| `email`    | string  | no        | `nil`   | sí      | sí (POST y PATCH) |
+| `direccion`| string  | no        | `nil`   | sí      | sí (POST y PATCH) |
+| `notas`    | string  | no        | `nil`   | sí      | sí (POST y PATCH) |
+
+Nota: `email` es opcional; si viene, debe tener formato de email válido. `telefono` es opcional y participa de la unicidad (ver invariante 3).
+
+### Request de creación — `POST /api/v1/clients`
+
+```json
+{
+  "nombre": "María López",
+  "telefono": "555-1234",
+  "email": "maria@example.com",
+  "direccion": "Calle Falsa 123",
+  "notas": "Prefiere tortas de chocolate"
+}
+```
+
+Response: `201` con el `Client` creado (shape `{"data": {...Client}}`). Solo `nombre` es obligatorio; el resto puede omitirse.
+
+### Request de edición — `PATCH /api/v1/clients/:id`
+
+```json
+{
+  "telefono": "555-9999",
+  "direccion": "Calle Nueva 456"
+}
+```
+
+Response: `200` con el `Client` actualizado. Los campos enviados se validan igual que en la creación; los omitidos se conservan.
+
+### Listado — `GET /api/v1/clients` (y `?q=...`)
+
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "nombre": "María López",
+      "telefono": "555-1234",
+      "email": "maria@example.com",
+      "direccion": "Calle Falsa 123",
+      "notas": "Prefiere tortas de chocolate"
+    }
+  ]
+}
+```
+
+Con `?q=lop` se devuelven solo los clientes cuyo `nombre` contiene `lop` sin distinguir mayúsculas.
+
+## Invariantes
+
+1. **`nombre` es obligatorio y no vacío**. Vacío o ausente → `422 validation_failed` y no se persiste nada.
+2. **`email` es opcional, pero si viene debe tener formato válido**. Formato inválido → `422 validation_failed` y no se persiste nada.
+3. **Unicidad `(nombre, telefono)`**: no se permite duplicar la combinación. Duplicado → `422 cliente_duplicado` y no se persiste nada. Sin `telefono`, la unicidad no aplica.
+4. **`DELETE /api/v1/clients/:id` es hard delete**: elimina el registro; `204` sin body.
+5. **Filtro `q`**: `GET /api/v1/clients?q=<texto>` filtra por coincidencia **parcial** en `nombre`, **case-insensitive**. Sin `q`, lista todos.
+6. `GET`, `PATCH` y `DELETE` sobre un `:id` inexistente → `404 not_found`.
+7. **Frontera futura con Ventas (`cliente_con_pedidos`)**: si el cliente tiene pedidos asociados, `DELETE` → `422 cliente_con_pedidos` y el cliente queda intacto. Mientras el módulo Ventas no materialice la asociación, el guard está **dormido**: el MVP hace hard delete y no bloquea la eliminación.
+8. `PATCH` valida los campos enviados con las mismas reglas que la creación; una violación → `422 validation_failed` y el cliente queda intacto.
+
+## Errores
+
+Mismo shape JSON API ya definido en el contrato de Backlog (`contracts/agile.md`, sección Errores): `{"errors": [{status, code, title, detail, source}]}`. No se repite el body completo.
+
+Códigos de este módulo:
+
+| Código HTTP | `code`                 | Cuándo |
+|-------------|------------------------|--------|
+| 422         | `validation_failed`    | `nombre` vacío/ausente; `email` con formato inválido |
+| 422         | `cliente_duplicado`    | ya existe un cliente con el mismo `(nombre, telefono)` |
+| 422         | `cliente_con_pedidos`  | se intenta borrar un cliente con pedidos asociados (guard futuro, hoy dormido) |
+| 404         | `not_found`            | `:id` de cliente inexistente |
+
+Los códigos `malformed_request` (400) del contrato de Backlog aplican igual aquí.
+
+## Dependencias
+
+- **Frontera Clientes → Ventas / Pedidos** (futura, `specs/reposteria`): Ventas asocia pedidos a un cliente. Clientes no conoce pedidos; cuando la asociación exista, el guard `cliente_con_pedidos` se activa. Hoy el hard delete es el comportamiento real.
+- Este contrato **no depende** de ningún otro módulo del sistema.
+
+## Escenarios Gherkin que ejercitan el contrato de Clientes
+
+Spec: `specs/reposteria/clientes.feature`
+
+- `@S-REP-20` — crear un cliente con todos sus datos → `201` con los campos devueltos.
+- `@S-REP-21` — crear un cliente solo con `nombre` → `201`, sin `email` ni `telefono`.
+- `@S-REP-22` — creación inválida (`nombre` vacío, `email` con formato inválido) → `422 validation_failed`, nada creado.
+- `@S-REP-23` — crear un cliente con `(nombre, telefono)` ya existente → `422 cliente_duplicado`, sin duplicado.
+- `@S-REP-24` — `PATCH` edita `telefono`/`direccion` y conserva el resto.
+- `@S-REP-25` — `DELETE` de un cliente sin pedidos → `204` y el cliente ya no existe.
+- `@S-REP-26` — `DELETE` de un cliente con pedidos asociados → `422 cliente_con_pedidos`, el cliente sigue existiendo (guard futuro, dormido).
+- `@S-REP-27` — `GET /clients?q=lop` devuelve solo las coincidencias parciales de `nombre` sin distinguir mayúsculas.
+- `@S-REP-28` — listar clientes y obtener uno por id → `200`, más `404 not_found` para un id inexistente.
