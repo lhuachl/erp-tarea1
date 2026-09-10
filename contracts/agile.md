@@ -11,7 +11,10 @@ Dominio: agile. Frontera del módulo con el resto del sistema y con clientes HTT
 
 - Runner BDD: `cucumber-rails` (features Gherkin en `features/`, ya declarado en `Gemfile` grupo `:test`).
 - Herramienta de mutación: `mutant` + `mutant-rspec` (grupo `:development, :test` del `Gemfile`). Comando real (requiere `--usage opensource`):
-  `RAILS_ENV=test bundle exec mutant run --usage opensource --include app --include config --require environment --use rspec "ClaseEnElDiff"`
+  `RAILS_ENV=test bundle exec mutant run --usage opensource --include app --include config --require environment --use rspec -t 90 "ClaseEnElDiff"`
+
+  `-t 90` es obligatorio: la suite pega contra Supabase remoto y supera el timeout
+  por defecto (5s), lo que haría contar timeouts como kills y falsear el score.
 - Los tests BDD se acotan a `features/` y se rastrean a escenarios `@S-AGL-nn` (ver [Escenarios](#escenarios-gherkin-que-ejercitan-este-contrato)).
 
 ## Endpoints de API (base `/api/v1`)
@@ -245,7 +248,7 @@ Response: `201` con el `DailySnapshot` creado (shape `{"data": {...DailySnapshot
 ## Invariantes
 
 1. **`nombre` es obligatorio y no vacío.**
-2. `fecha_fin >= fecha_inicio` y ambas **de hoy en adelante**. Violación → `422 validation_failed`.
+2. `fecha_fin >= fecha_inicio` y `fecha_fin >= hoy`. NO se exige `fecha_inicio >= hoy` (un sprint puede haber empezado). Violación → `422 validation_failed`.
 3. `estado` inicial siempre `planning` (`POST` no acepta `estado`).
 4. `estado` ∈ `{ "planning", "activo", "cerrado" }` con **transición estricta sin saltos ni retrocesos**: `planning → activo → cerrado`. Violación → `422 invalid_transition`, estado persistido intacto.
 5. **Unicidad del sprint activo**: solo un sprint `activo` a la vez en el workspace "REP". Activar un segundo → `422 sprint_activo_duplicado`.
@@ -288,3 +291,186 @@ Spec: `specs/agile/sprints.feature`
 - `@S-AGL-17` — snapshot inválido: sprint no `activo` (`sprint_no_activo`), `fecha` fuera del rango, enteros negativos → `422 validation_failed`.
 - `@S-AGL-18` — segundo snapshot el mismo día del mismo sprint → `422 snapshot_duplicado`, el existente intacto.
 - `@S-AGL-19` — listar sprints con su estado y obtener uno por id → `200`.
+
+---
+
+# Contrato del módulo Priorización (WSJF / Cost of Delay + diagramas)
+
+Dominio: agile. Frontera del módulo con el resto del sistema y con clientes HTTP. Módulo de **solo lectura**: no crea ni modifica `BacklogItem`.
+
+## Módulos que usan este contrato
+
+- Clientes HTTP del API (`/api/v1`) — frontend y consumidores externos que alimentan los diagramas (ranking, matriz de burbujas, perfil CoD).
+- Módulo Backlog: **dueño** de los datos. Priorización consume `BacklogItem` en solo lectura; nunca escribe ni transiciona estados.
+
+## Runner BDD y mutación
+
+Los mismos fijados por el repo en la sección de Backlog (arriba): `cucumber-rails` para Gherkin y `mutant` + `mutant-rspec` para mutación.
+
+## Endpoints de API (base `/api/v1`)
+
+| Método | Ruta                                | Descripción                                                                 | Éxito |
+|--------|-------------------------------------|-----------------------------------------------------------------------------|-------|
+| GET    | `/api/v1/prioritization/ranking`    | Ranking WSJF de historias. Query opcional `?estado=` (`backlog`/`listo`/`en_sprint`/`done`). | 200 |
+| GET    | `/api/v1/prioritization/matriz`     | Puntos de la matriz de burbujas (cuadrante CoD vs duración).                | 200 |
+| GET    | `/api/v1/prioritization/perfil`     | Historias agrupadas en los 4 cubos de `cod_profile`.                        | 200 |
+
+Los tres son `GET` de **solo lectura**. No existen POST/PATCH/DELETE en este módulo.
+
+## Estructuras de datos
+
+### RankingEntry (entrada del ranking)
+
+| Campo                  | Tipo    | Origen                | Lectura | Escritura |
+|------------------------|---------|-----------------------|---------|-----------|
+| `id`                   | integer | `BacklogItem.id`      | sí      | no (solo lectura) |
+| `titulo`               | string  | `BacklogItem.titulo`  | sí      | no (solo lectura) |
+| `prioridad`            | enum    | `BacklogItem.prioridad` | sí    | no (solo lectura) |
+| `estado`               | enum    | `BacklogItem.estado`  | sí      | no (solo lectura) |
+| `cod_value`            | number  | `BacklogItem.cod_value` | sí    | no (solo lectura) |
+| `cod_time_criticality` | number  | `BacklogItem.cod_time_criticality` | sí | no (solo lectura) |
+| `cod_risk_reduction`   | number  | `BacklogItem.cod_risk_reduction` | sí | no (solo lectura) |
+| `cod_duration`         | number  | `BacklogItem.cod_duration` | sí   | no (solo lectura) |
+| `wsjf`                 | number  | **calculado en servidor** | sí  | **no — calculado, nunca se recibe del cliente** |
+| `cod_profile`          | string  | **calculado en servidor** | sí  | **no — calculado, nunca se recibe del cliente** |
+
+`RankingEntry` es una **proyección de lectura** de `BacklogItem` (mismos enums `prioridad` y `estado` definidos en el contrato de Backlog). No agrega campos editables.
+
+### MatrizPoint (punto de la matriz de burbujas)
+
+| Campo         | Tipo    | Origen / cálculo                         |
+|---------------|---------|------------------------------------------|
+| `titulo`      | string  | `BacklogItem.titulo`                     |
+| `x`           | number  | `cod_duration` (duración/complejidad)    |
+| `y`           | number  | `cod_value + cod_time_criticality + cod_risk_reduction` (CoD total) |
+| `tamano`      | number  | `wsjf` (tamaño de la burbuja)            |
+| `cod_profile` | string  | **calculado en servidor**                |
+
+### Perfil CoD
+
+Agrupación por `cod_profile` en cuatro cubos fijos. Cada cubo contiene `RankingEntry[]`, con el mismo orden del ranking.
+
+- `expedite` — `wsjf >= 20`.
+- `fixed_date` — `cod_time_criticality >= 8` (y no `expedite`).
+- `standard` — `wsjf >= 5` (y no `fixed_date`/`expedite`).
+- `intangible` — el resto, **incluye siempre `cod_duration = 0`**.
+
+Regla de `cod_profile` ya vigente y calculada en `BacklogItem`; este módulo solo la consume.
+
+### Respuesta — `GET /api/v1/prioritization/ranking`
+
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "titulo": "Torta de cumpleaños",
+      "prioridad": "alta",
+      "estado": "backlog",
+      "cod_value": 8,
+      "cod_time_criticality": 5,
+      "cod_risk_reduction": 3,
+      "cod_duration": 2,
+      "wsjf": 8.0,
+      "cod_profile": "standard"
+    }
+  ]
+}
+```
+
+### Respuesta — `GET /api/v1/prioritization/ranking?estado=done`
+
+```json
+{
+  "data": [
+    {
+      "id": 2,
+      "titulo": "Cobrar pedidos pendientes",
+      "prioridad": "media",
+      "estado": "done",
+      "cod_value": 4,
+      "cod_time_criticality": 3,
+      "cod_risk_reduction": 5,
+      "cod_duration": 2,
+      "wsjf": 6.0,
+      "cod_profile": "standard"
+    }
+  ]
+}
+```
+
+### Respuesta — `GET /api/v1/prioritization/matriz`
+
+```json
+{
+  "data": [
+    {
+      "titulo": "Torta de cumpleaños",
+      "x": 2,
+      "y": 16,
+      "tamano": 8.0,
+      "cod_profile": "standard"
+    },
+    {
+      "titulo": "Reparto del turno tarde",
+      "x": 1,
+      "y": 30,
+      "tamano": 30.0,
+      "cod_profile": "expedite"
+    }
+  ]
+}
+```
+
+### Respuesta — `GET /api/v1/prioritization/perfil`
+
+```json
+{
+  "data": {
+    "expedite": [
+      { "id": 1, "titulo": "Torta de cumpleaños", "cod_profile": "expedite", "wsjf": 30.0 }
+    ],
+    "fixed_date": [
+      { "id": 2, "titulo": "Cobrar pedidos pendientes", "cod_profile": "fixed_date", "wsjf": 2.75 }
+    ],
+    "standard": [
+      { "id": 3, "titulo": "Reparto del turno tarde", "cod_profile": "standard", "wsjf": 6.0 }
+    ],
+    "intangible": [
+      { "id": 4, "titulo": "Ajustar receta", "cod_profile": "intangible", "wsjf": 0.3 }
+    ]
+  }
+}
+```
+
+> Los objetos de ejemplo se abrevan a los campos ilustrativos; cada elemento del cubo es un `RankingEntry` completo.
+
+## Invariantes
+
+1. **`wsjf` se calcula SIEMPRE en el servidor**: `wsjf = (cod_value + cod_time_criticality + cod_risk_reduction) / cod_duration`. El cliente nunca lo provee. Los endpoints son de solo lectura, por lo que un parámetro `wsjf` en la query se **ignora** (el valor devuelto es el calculado).
+2. **`cod_duration = 0`**: `wsjf = 0` (sin división por cero), `cod_profile = "intangible"` y la historia va **al final del ranking** (con `wsjf` 0 queda última por el criterio de orden).
+3. **`cod_profile`** ∈ `{ "expedite", "fixed_date", "standard", "intangible" }` con la regla de prelación del contrato de Backlog.
+4. **Orden del ranking**: `wsjf` descendente; empate → `prioridad` (`alta` > `media` > `baja`); nuevo empate → `id` ascendente.
+5. **Filtro opcional `?estado=`**: si viene, el ranking solo incluye historias con ese `estado`. Si se omite, incluye todas. `estado` fuera del enum → `422 validation_failed`.
+6. **La matriz incluye TODAS las historias, sin filtrar por estado** (incluye `backlog`, `listo`, `en_sprint`, `done`).
+7. **El perfil incluye todas las historias** (sin filtro de estado) y cubre los 4 cubos; un cubo sin historias se devuelve como arreglo vacío.
+8. Los tres endpoints son de **solo lectura**: no mutan `BacklogItem` ni su estado.
+
+## Errores
+
+Mismo shape JSON API ya definido en el contrato de Backlog (arriba): `{"errors": [{status, code, title, detail, source}]}`. No se repite el body completo. Este módulo no define códigos nuevos; aplican `malformed_request` (JSON/query malformada) y `validation_failed` (`estado` fuera del enum).
+
+## Dependencias
+
+- **Frontera Priorización → Backlog**: Priorización consume `BacklogItem` en **solo lectura** (proyección `RankingEntry`, `MatrizPoint`, cubos de perfil). No escribe ni transiciona estados; no crea nuevas dependencias en Backlog.
+
+## Escenarios Gherkin que ejercitan este contrato
+
+Spec: `specs/agile/priorizacion.feature`
+
+- `@S-AGL-20` — ranking ordenado por `wsjf` desc, desempate por `prioridad` (alta > media > baja) e `id` asc; la entrada incluye los componentes CoD.
+- `@S-AGL-21` — filtro opcional `?estado=` (esquema: `done`, `backlog`, `en_sprint`) devuelve solo las historias de ese estado.
+- `@S-AGL-22` — historia con `cod_duration = 0` → `wsjf 0`, `cod_profile "intangible"` y al final del ranking.
+- `@S-AGL-23` — matriz de cuadrante: `x = cod_duration`, `y =` CoD total, `tamano = wsjf`, con todas las historias sin filtrar por estado.
+- `@S-AGL-24` — perfil CoD agrupado en `expedite`, `fixed_date`, `standard` e `intangible`.
+- `@S-AGL-25` — el ranking es de solo lectura: un `wsjf` inyectado por el cliente (`999`) se ignora y se devuelve el calculado (`8.0`).
