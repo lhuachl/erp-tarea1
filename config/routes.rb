@@ -6,6 +6,9 @@ Rails.application.routes.draw do
     namespace :v1 do
       resources :users, only: %i[index show update]
       resources :backlog_items, only: %i[index create update]
+      resources :sprints, only: %i[index show create update] do
+        resources :daily_snapshots, only: %i[create]
+      end
     end
   end
 
