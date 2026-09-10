@@ -8,6 +8,7 @@ class Sprint < ApplicationRecord
   has_many :daily_snapshots, dependent: :destroy
 
   validates :nombre, presence: true
+  validates :fecha_inicio, :fecha_fin, presence: true
   validate :fecha_fin_no_anterior_a_inicio
   # Las fechas de un sprint se fijan al planificarlo; los sprints históricos
   # (activo/cerrado) pueden tener fechas pasadas.

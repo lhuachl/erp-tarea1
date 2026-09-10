@@ -62,6 +62,14 @@ RSpec.describe "Api::V1::Sprints", type: :request do
       expect(sprint.reload.estado).to eq("cerrado")
     end
 
+    # rama idempotente de activar?: reafirmar "activo" no debe revalidar sprint_vacio
+    it "permite reafirmar el estado activo sin historias" do
+      sprint = create(:sprint, estado: "activo")
+      patch "/api/v1/sprints/#{sprint.id}", params: { estado: "activo" }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(sprint.reload.estado).to eq("activo")
+    end
+
     # @S-AGL-13
     { "planning" => "cerrado", "activo" => "planning", "cerrado" => "activo" }.each do |actual, solicitado|
       it "rechaza #{actual} -> #{solicitado} con invalid_transition" do

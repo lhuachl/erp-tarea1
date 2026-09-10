@@ -48,7 +48,10 @@ Cuando(/^envío una petición POST a \/api\/v1\/backlog_items con los campos:$/)
 end
 
 Cuando(/^envío una petición PATCH a \/api\/v1\/backlog_items\/(\d+) con estado "([^"]+)"$/) do |_id, estado|
-  peticion_json(:patch, "/api/v1/backlog_items/#{@historia.id}", "estado" => estado)
+  payload = { "estado" => estado }
+  # Contrato Backlog/Sprint: listo -> en_sprint exige asignar un sprint_id válido.
+  payload["sprint_id"] = create(:sprint).id if estado == "en_sprint"
+  peticion_json(:patch, "/api/v1/backlog_items/#{@historia.id}", payload)
 end
 
 Cuando(/^envío una petición PATCH a \/api\/v1\/backlog_items\/(\d+) con:$/) do |_id, json|
@@ -96,7 +99,7 @@ Entonces(/^la historia tiene story_points (\d+)$/) do |puntos|
 end
 
 Entonces(/^la respuesta devuelve las historias en este orden:$/) do |tabla|
-  esperado = tabla.hashes.map { |fila| [fila["titulo"], fila["wsjf"].to_f] }
-  obtenido = respuesta_json["data"].map { |h| [h["titulo"], h["wsjf"]] }
+  esperado = tabla.hashes.map { |fila| [ fila["titulo"], fila["wsjf"].to_f ] }
+  obtenido = respuesta_json["data"].map { |h| [ h["titulo"], h["wsjf"] ] }
   expect(obtenido).to eq(esperado)
 end
