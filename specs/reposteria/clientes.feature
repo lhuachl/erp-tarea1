@@ -1,6 +1,5 @@
 # language: es
 # Contrato de negocio del módulo Clientes del dominio repostería.
-@wip
 Característica: Gestión de clientes
   Como personal de la repostería
   Quiero crear, editar, buscar, listar y eliminar clientes

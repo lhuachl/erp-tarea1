@@ -12,6 +12,7 @@ Rails.application.routes.draw do
       resources :materials, only: %i[index show create update] do
         resources :stock_movements, only: %i[create]
       end
+      resources :clients, only: %i[index show create update destroy]
     end
   end
 

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_10_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_10_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "extensions.pg_stat_statements"
   enable_extension "extensions.pgcrypto"
@@ -32,6 +32,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_130000) do
     t.string "titulo", null: false
     t.datetime "updated_at", null: false
     t.index ["sprint_id"], name: "index_backlog_items_on_sprint_id"
+  end
+
+  create_table "clients", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "direccion"
+    t.string "email"
+    t.string "nombre", null: false
+    t.string "notas"
+    t.string "telefono"
+    t.datetime "updated_at", null: false
+    t.index ["nombre", "telefono"], name: "index_clients_on_nombre_and_telefono", unique: true
   end
 
   create_table "daily_snapshots", force: :cascade do |t|
