@@ -474,3 +474,138 @@ Spec: `specs/agile/priorizacion.feature`
 - `@S-AGL-23` — matriz de cuadrante: `x = cod_duration`, `y =` CoD total, `tamano = wsjf`, con todas las historias sin filtrar por estado.
 - `@S-AGL-24` — perfil CoD agrupado en `expedite`, `fixed_date`, `standard` e `intangible`.
 - `@S-AGL-25` — el ranking es de solo lectura: un `wsjf` inyectado por el cliente (`999`) se ignora y se devuelve el calculado (`8.0`).
+
+---
+
+# Contrato del módulo Burndown + velocity
+
+Dominio: agile. Frontera del módulo con el resto del sistema y con clientes HTTP. Módulo de **solo lectura**: no crea ni modifica `Sprint`, `DailySnapshot` ni `BacklogItem`.
+
+## Módulos que usan este contrato
+
+- Clientes HTTP del API (`/api/v1`) — frontend y consumidores externos que renderizan el chart y el histórico de velocity.
+- Módulo Sprint: **dueño** de `Sprint` y `DailySnapshot`. Burndown los consume en solo lectura.
+- Módulo Backlog: **dueño** de `BacklogItem`. Burndown consume `story_points`, `estado`, `sprint_id` y el nuevo `sprint_assigned_at` (ver [Dependencias](#dependencias-3)).
+
+## Runner BDD y mutación
+
+Los mismos fijados por el repo en la sección de Backlog (arriba): `cucumber-rails` para Gherkin y `mutant` + `mutant-rspec` para mutación.
+
+## Endpoints de API (base `/api/v1`)
+
+| Método | Ruta                            | Descripción                                                              | Éxito |
+|--------|---------------------------------|--------------------------------------------------------------------------|-------|
+| GET    | `/api/v1/sprints/:id/burndown`  | Burndown del sprint: ideal, real y huecos. Solo sprint `activo` o `cerrado`. | 200 |
+| GET    | `/api/v1/velocity`              | Velocity histórica de los sprints `cerrados`.                            | 200 |
+
+Ambos son `GET` de **solo lectura**. No existen POST/PATCH/DELETE en este módulo.
+
+## Estructuras de datos
+
+### Burndown
+
+| Campo          | Tipo                | Origen / cálculo |
+|----------------|---------------------|------------------|
+| `total_puntos` | integer             | Σ `story_points` de las historias con `sprint_id = :id`, en cualquier estado (`done` incluido). |
+| `fecha_inicio` | date                | `Sprint.fecha_inicio`. |
+| `fecha_fin`    | date                | `Sprint.fecha_fin`. |
+| `ideal`        | `IdealPoint[]`      | Línea ideal (ver invariantes 2–3), ordenada por `fecha` asc. |
+| `real`         | `RealSnapshot[]`    | `DailySnapshot` del sprint, ordenados por `fecha` asc. |
+| `huecos`       | `date[]`            | Fechas del rango sin snapshot, orden asc. |
+
+- `IdealPoint = { fecha: date, restante: number }`.
+- `RealSnapshot = { fecha: date, puntos_restantes: integer }`.
+- `huecos` es un arreglo de fechas (`[fecha]`); el comentario inline de `burndown.feature` lo bosqueja como `[{fecha}]`, pero el shape de contrato es la lista de fechas.
+
+### Respuesta — `GET /api/v1/sprints/:id/burndown`
+
+```json
+{
+  "data": {
+    "total_puntos": 6,
+    "fecha_inicio": "2026-09-04",
+    "fecha_fin": "2026-09-10",
+    "ideal": [
+      { "fecha": "2026-09-04", "restante": 6 },
+      { "fecha": "2026-09-10", "restante": 0 }
+    ],
+    "real": [
+      { "fecha": "2026-09-04", "puntos_restantes": 6 },
+      { "fecha": "2026-09-07", "puntos_restantes": 4 }
+    ],
+    "huecos": [ "2026-09-05", "2026-09-06" ]
+  }
+}
+```
+
+### Velocity
+
+| Campo    | Tipo            | Origen / cálculo |
+|----------|-----------------|------------------|
+| `sprints`| `VelocitySprint[]` | Un elemento por sprint `cerrado`, ordenado por `fecha_fin` asc. |
+| `promedio` | number        | Media aritmética de `puntos_completados` (ver invariante 9). |
+| `tendencia` | enum         | `{ "sube", "baja", "estable" }` (ver invariante 10). |
+
+- `VelocitySprint = { nombre: string, puntos_comprometidos: integer, puntos_completados: integer }`.
+
+### Respuesta — `GET /api/v1/velocity`
+
+```json
+{
+  "data": {
+    "sprints": [
+      { "nombre": "Sprint 1", "puntos_comprometidos": 6, "puntos_completados": 6 }
+    ],
+    "promedio": 7.0,
+    "tendencia": "sube"
+  }
+}
+```
+
+## Invariantes
+
+1. **`total_puntos`** = Σ `story_points` de las historias del sprint, en cualquier estado (`done` incluido). Un total `0` es válido y no rompe el cálculo.
+2. **`ideal` son `N + 1` entradas**, una por cada fecha de `[fecha_inicio, fecha_fin]` inclusive, orden asc, con `N = (fecha_fin - fecha_inicio)` en días. `restante(i) = total_puntos * (N - i) / N`, con `i = 0..N`: `total_puntos` en `fecha_inicio` y `0` en `fecha_fin`.
+3. **Sin división por cero**: si `total_puntos = 0` o `N = 0`, `restante = 0` en todas las fechas del rango.
+4. **Scope change**: si una historia se asigna al sprint con fecha (`sprint_assigned_at`) posterior a `fecha_inicio`, el ideal se **recalcula desde esa fecha de asignación** con el nuevo `total_puntos` acumulado. El tramo anterior conserva la línea del total previo sobre la ventana completa del sprint y se admite el salto vertical en el corte. Cada reasignación posterior reinicia el tramo con el total vigente.
+5. **`real`** = `DailySnapshot.puntos_restantes` del sprint ordenados por `fecha` asc. No incluye fechas sin snapshot.
+6. **`huecos`** = fechas de `[fecha_inicio, fecha_fin]` sin snapshot, orden asc; incluye días futuros aún sin snapshot.
+7. **Acceso al burndown**: solo sprint `activo` o `cerrado`. Un sprint en `planning` → `422 sprint_no_iniciado`; un `:id` inexistente → `404 not_found` (ver [Errores](#errores-3)).
+8. **`sprints` de velocity**: solo sprints `cerrado`, ordenados por `fecha_fin` asc (el último es el de mayor `fecha_fin`).
+9. `puntos_comprometidos` = Σ `story_points` de las historias del sprint, en cualquier estado. `puntos_completados` = Σ `story_points` de las historias en estado `done`.
+10. `promedio` = media aritmética de `puntos_completados` de los sprints cerrados. `tendencia` compara el **último sprint cerrado** contra `promedio`: último > promedio → `"sube"`; último < promedio → `"baja"`; último = promedio → `"estable"`.
+11. **Sin sprints cerrados**: `sprints = []`, `promedio = 0`, `tendencia = "estable"` (no hay error).
+12. Los dos endpoints son de **solo lectura**: no mutan `Sprint`, `DailySnapshot` ni `BacklogItem`.
+
+## Errores
+
+Mismo shape JSON API ya definido en el contrato de Backlog (arriba): `{"errors": [{status, code, title, detail, source}]}`. No se repite el body completo. Aplican `malformed_request` y `not_found` del contrato de Backlog; este módulo agrega un único código:
+
+| Código HTTP | `code`                | Cuándo |
+|-------------|-----------------------|--------|
+| 404         | `not_found`           | `:id` de sprint inexistente en el burndown |
+| 422         | `sprint_no_iniciado`  | se pide el burndown de un sprint en estado `planning` |
+
+## Dependencias
+
+- **Frontera Burndown → Sprint** (solo lectura): `Sprint.fecha_inicio`, `fecha_fin`, `estado` y, en velocity, `nombre`. Sprint no depende de Burndown.
+- **Frontera Burndown → DailySnapshot** (solo lectura): `fecha`, `puntos_restantes`. El snapshot inmutable sigue siendo propiedad del módulo Sprint.
+- **Frontera Burndown → Backlog** (solo lectura): `BacklogItem.story_points`, `estado`, `sprint_id` y `sprint_assigned_at`. Burndown no escribe ni transiciona estados.
+- **Campo nuevo `sprint_assigned_at` (datetime) en `BacklogItem`** — frontera con Backlog y **deuda de implementación**:
+  - Requerido para el scope change (invariante 4); sin él no se puede recalcular el ideal.
+  - Se setea al asignar `sprint_id` (transición `listo → en_sprint`), de forma atómica con esa asignación. Nulo hasta la primera asignación.
+  - La sección Backlog de este documento aún no lo lista; Backlog debe incorporarlo (migración) y **backfillear** las filas existentes con `sprint_id` antes de habilitar el scope change.
+  - El comentario inline de `burndown.feature` lo llama `agregado_en`; el nombre fijado por contrato es `sprint_assigned_at`.
+
+## Escenarios Gherkin que ejercitan este contrato
+
+Spec: `specs/agile/burndown.feature`
+
+- `@S-AGL-30` — burndown de sprint `activo`: `total_puntos`, rango, `ideal` lineal, `real` desde snapshots y `huecos` de los días sin snapshot.
+- `@S-AGL-31` — el burndown también está disponible para un sprint `cerrado`.
+- `@S-AGL-32` — esquema de acceso: sprint `planning` → `422 sprint_no_iniciado`; sprint inexistente → `404 not_found`.
+- `@S-AGL-33` — scope change: historia agregada tras iniciar el sprint → `total_puntos` nuevo y `ideal` recalculado desde la fecha de asignación.
+- `@S-AGL-34` — sprint con `total_puntos 0` → `ideal` en 0 sin romper el burndown.
+- `@S-AGL-35` — velocity de sprints cerrados con `puntos_comprometidos`/`puntos_completados`, `promedio` y `tendencia "sube"`.
+- `@S-AGL-36` — esquema de `tendencia` contra el `promedio`: `sube`, `baja` y `estable`.
+- `@S-AGL-37` — sin sprints cerrados: `sprints = []`, `promedio = 0`, `tendencia = "estable"`.
