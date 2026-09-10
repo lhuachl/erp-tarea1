@@ -9,6 +9,9 @@ Rails.application.routes.draw do
       resources :sprints, only: %i[index show create update] do
         resources :daily_snapshots, only: %i[create]
       end
+      resources :materials, only: %i[index show create update] do
+        resources :stock_movements, only: %i[create]
+      end
     end
   end
 
