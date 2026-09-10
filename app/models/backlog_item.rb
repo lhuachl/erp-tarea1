@@ -12,6 +12,8 @@ class BacklogItem < ApplicationRecord
   enum :prioridad, PRIORIDADES.index_by(&:itself), default: :media
   enum :estado, ESTADOS.index_by(&:itself), default: :backlog
 
+  belongs_to :sprint, optional: true
+
   validates :titulo, presence: true
   validates :story_points, numericality: { only_integer: true, greater_than: 0, message: "debe ser un entero mayor a 0" }
 
@@ -35,6 +37,6 @@ class BacklogItem < ApplicationRecord
 
   def self.sorted
     rango_prioridad = { "alta" => 0, "media" => 1, "baja" => 2 }
-    all.sort_by { |item| [rango_prioridad.fetch(item.prioridad, 3), -item.wsjf] }
+    all.sort_by { |item| [ rango_prioridad.fetch(item.prioridad, 3), -item.wsjf ] }
   end
 end

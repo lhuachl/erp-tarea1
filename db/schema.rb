@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_09_213100) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_10_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "extensions.pg_stat_statements"
   enable_extension "extensions.pgcrypto"
@@ -27,8 +27,31 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_213100) do
     t.string "descripcion", default: "", null: false
     t.string "estado", default: "backlog", null: false
     t.string "prioridad", default: "media", null: false
+    t.bigint "sprint_id"
     t.integer "story_points", null: false
     t.string "titulo", null: false
+    t.datetime "updated_at", null: false
+    t.index ["sprint_id"], name: "index_backlog_items_on_sprint_id"
+  end
+
+  create_table "daily_snapshots", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.date "fecha", null: false
+    t.integer "horas_restantes", null: false
+    t.integer "puntos_restantes", null: false
+    t.bigint "sprint_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["sprint_id", "fecha"], name: "index_daily_snapshots_on_sprint_id_and_fecha", unique: true
+    t.index ["sprint_id"], name: "index_daily_snapshots_on_sprint_id"
+  end
+
+  create_table "sprints", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "estado", default: "planning", null: false
+    t.date "fecha_fin", null: false
+    t.date "fecha_inicio", null: false
+    t.string "nombre", null: false
+    t.string "objetivo", default: "", null: false
     t.datetime "updated_at", null: false
   end
 
@@ -45,4 +68,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_09_213100) do
     t.index ["reset_password_token"], name: "index_users_on_reset_password_token", unique: true
     t.index ["role"], name: "index_users_on_role"
   end
+
+  add_foreign_key "backlog_items", "sprints"
+  add_foreign_key "daily_snapshots", "sprints"
 end
