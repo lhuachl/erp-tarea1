@@ -1,5 +1,6 @@
 # language: es
 # Contrato de negocio del módulo Priorización (WSJF / Cost of Delay + diagramas) del dominio agile.
+@wip
 Característica: Priorización WSJF y diagramas de Cost of Delay
   Como equipo de repostería en el workspace único (clave "REP")
   Quiero consultar el ranking WSJF, la matriz de cuadrante y el perfil CoD
