@@ -34,7 +34,7 @@ Dominio: repostería. Frontera del módulo con el resto del sistema y con client
 | `id`             | integer | —         | —       | sí      | no (solo lectura) |
 | `nombre`         | string  | sí        | —       | sí      | sí (POST y PATCH) |
 | `unidad`         | enum    | sí        | —       | sí      | sí (POST y PATCH) |
-| `stock_actual`   | number  | no        | `0`     | sí      | **no — solo vía movimientos de stock** |
+| `stock_actual`   | number  | no        | `0`     | sí      | sí en `POST` (stock inicial); **no en `PATCH`** (solo vía movimientos) |
 | `stock_min`      | number  | no        | `0`     | sí      | sí (POST y PATCH) |
 | `costo_unitario` | number  | no        | `0`     | sí      | sí (POST y PATCH) |
 | `critico`        | boolean | —         | calculado | sí    | no (solo lectura) |
@@ -130,7 +130,7 @@ Response: `200` con el `Material` actualizado. `stock_actual` nunca cambia por e
    - `salida`: `stock_actual -= cantidad`; si el resultado sería negativo → `422 stock_insuficiente`, sin registrar el movimiento y con el stock intacto.
    - `ajuste`: `stock_actual = cantidad` (la cantidad representa el stock nuevo).
 7. **Atomicidad**: el stock del material y el movimiento se persisten juntos o no se persiste ninguno. Ningún error de validación deja stock modificado ni movimiento registrado.
-8. **`stock_actual` es de solo lectura por API**: `POST /materials` y `PATCH /materials/:id` que lo incluyan → `422 readonly_field`; el stock queda intacto. Solo se modifica registrando movimientos.
+8. **`stock_actual`**: se acepta en `POST /materials` como stock inicial (si no viene, default `0`). En `PATCH /materials/:id` es de solo lectura → `422 readonly_field` y el stock queda intacto; a partir de ahí solo se modifica registrando movimientos.
 9. **Crítico**: un insumo es crítico si `stock_actual <= stock_min`. `GET /api/v1/materials?solo_criticos=true` devuelve exactamente esos insumos (el caso `<=` incluye el límite).
 10. `GET /api/v1/materials/:id` sobre un id inexistente → `404 not_found`.
 
@@ -145,7 +145,7 @@ Códigos de este módulo:
 | 422         | `validation_failed`  | `nombre` vacío; `unidad`/`tipo` fuera de enum; valores negativos; `cantidad <= 0` |
 | 422         | `nombre_duplicado`   | ya existe un material con ese `nombre` |
 | 422         | `stock_insuficiente` | una `salida` dejaría `stock_actual` negativo |
-| 422         | `readonly_field`     | se envía `stock_actual` en `POST`/`PATCH` (o `critico`/`id`) |
+| 422         | `readonly_field`     | se envía `stock_actual` en `PATCH` (o `critico`/`id`) |
 | 404         | `not_found`          | `:id` de material inexistente |
 
 Los códigos `malformed_request` (400) del contrato de Backlog aplican igual aquí.
