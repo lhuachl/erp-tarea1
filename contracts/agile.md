@@ -5,7 +5,7 @@ Dominio: agile. Frontera del módulo con el resto del sistema y con clientes HTT
 ## Módulos que usan este contrato
 
 - Clientes HTTP del API (`/api/v1`) — frontend y consumidores externos.
-- Módulo Sprint (planificado, **no implementado**): consumirá historias en estado `en_sprint`. Hoy este módulo NO depende de sprints (ver [Dependencias](#dependencias)).
+- Módulo Sprint (**implementado** en la sección Sprint + daily snapshots): un BacklogItem en `en_sprint` lleva `sprint_id` (asignación a sprint). La transición `listo → en_sprint` requiere un `sprint_id` válido (ver [Dependencias](#dependencias)).
 
 ## Runner BDD y mutación (fijados por stack del repo)
 
@@ -138,7 +138,7 @@ Body de error (siempre la misma forma):
 
 ## Dependencias
 
-- Este módulo **NO depende de sprints aún**: el estado `en_sprint` se valida únicamente como transición permitida desde `listo`, **sin FK** ni verificación contra el módulo Sprint. El módulo Sprint es un consumidor planificado, no una dependencia de Backlog.
+- Este módulo **depende ahora del módulo Sprint** para la asignación: al transicionar `listo → en_sprint`, el PATCH debe incluir un `sprint_id` de un sprint existente (el item queda asignado a ese sprint). La validación de unicidad de sprint activo y de no vacío al activar vive en el módulo Sprint. Sin esta asignación, `en_sprint` sigue siendo solo una transición de estado.
 
 ## Escenarios Gherkin que ejercitan este contrato
 
@@ -150,3 +150,141 @@ Spec: `specs/agile/backlog.feature`
 - `@S-AGL-04` — transición inválida (salto/retroceso) → `422 invalid_transition`, estado intacto.
 - `@S-AGL-05` — editar campos básicos y de Cost of Delay; `wsjf` recalculado y devuelto.
 - `@S-AGL-06` — listar backlog ordenado por prioridad (alta > media > baja) y, dentro de la misma prioridad, por `wsjf` desc.
+
+---
+
+# Contrato del módulo Sprint + daily snapshots
+
+Dominio: agile. Frontera del módulo con el resto del sistema y con clientes HTTP.
+
+## Módulos que usan este contrato
+
+- Clientes HTTP del API (`/api/v1`) — frontend y consumidores externos.
+- Módulo Backlog: su `BacklogItem` guarda `sprint_id` al transicionar a `en_sprint` (ver [Dependencias](#dependencias-1)).
+- Módulo Burndown (planificado, **no implementado**): será consumidor de los `daily_snapshots`.
+
+## Runner BDD y mutación
+
+Los mismos fijados por el repo en la sección de Backlog (arriba): `cucumber-rails` para Gherkin y `mutant` + `mutant-rspec` para mutación.
+
+## Endpoints de API (base `/api/v1`)
+
+| Método | Ruta                                      | Descripción                                                        | Éxito |
+|--------|-------------------------------------------|--------------------------------------------------------------------|-------|
+| GET    | `/api/v1/sprints`                         | Lista de sprints con su estado.                                    | 200 |
+| GET    | `/api/v1/sprints/:id`                     | Obtiene un sprint por id.                                          | 200 |
+| POST   | `/api/v1/sprints`                         | Crea un sprint. `estado` inicial siempre `planning`.               | 201 |
+| PATCH  | `/api/v1/sprints/:id`                     | Edita `nombre`/`objetivo`/fechas y/o transiciona `estado`.         | 200 |
+| POST   | `/api/v1/sprints/:sprint_id/daily_snapshots` | Registra el snapshot diario del sprint activo.                  | 201 |
+
+## Estructuras de datos
+
+### Sprint
+
+| Campo         | Tipo     | Requerido | Default     | Lectura | Escritura |
+|---------------|----------|-----------|-------------|---------|-----------|
+| `id`          | integer  | —         | —           | sí      | no (solo lectura) |
+| `nombre`      | string   | sí        | —           | sí      | sí |
+| `objetivo`    | string   | no        | `""`        | sí      | sí |
+| `fecha_inicio`| date     | sí        | —           | sí      | sí (solo en estado `planning`) |
+| `fecha_fin`   | date     | sí        | —           | sí      | sí (solo en estado `planning`) |
+| `estado`      | enum     | no        | `"planning"`| sí      | sí (solo vía PATCH, con transición válida) |
+
+Enums:
+
+- `estado` ∈ `{ "planning", "activo", "cerrado" }` — transición estricta sin saltos ni retrocesos: `planning → activo → cerrado`.
+
+### DailySnapshot
+
+| Campo              | Tipo    | Requerido | Default | Lectura | Escritura |
+|--------------------|---------|-----------|---------|---------|-----------|
+| `id`               | integer | —         | —       | sí      | no (solo lectura) |
+| `sprint_id`        | integer | —         | —       | sí      | no (viene de la ruta `:sprint_id`) |
+| `fecha`            | date    | sí        | —       | sí      | sí (en la creación) |
+| `puntos_restantes` | integer | sí        | —       | sí      | sí (en la creación) |
+| `horas_restantes`  | integer | sí        | —       | sí      | sí (en la creación) |
+
+Nota: el snapshot es inmutable — solo se crea; un día ya registrado no se sobrescribe (`snapshot_duplicado`).
+
+### Request de creación — `POST /api/v1/sprints`
+
+```json
+{
+  "nombre": "Sprint 1",
+  "objetivo": "Ordenar el flujo de cobro",
+  "fecha_inicio": "2026-09-07",
+  "fecha_fin": "2026-09-18"
+}
+```
+
+Response: `201` con el `Sprint` creado (shape `{"data": {...Sprint}}`, misma forma JSON API que Backlog). `estado` devuelto: `"planning"`.
+
+### Request de edición/transición — `PATCH /api/v1/sprints/:id`
+
+```json
+{
+  "nombre": "Sprint 1 (cobro)",
+  "estado": "activo"
+}
+```
+
+Response: `200` con el `Sprint` actualizado.
+
+### Request de snapshot — `POST /api/v1/sprints/:sprint_id/daily_snapshots`
+
+```json
+{
+  "fecha": "2026-09-09",
+  "puntos_restantes": 21,
+  "horas_restantes": 40
+}
+```
+
+Response: `201` con el `DailySnapshot` creado (shape `{"data": {...DailySnapshot}}`).
+
+## Invariantes
+
+1. **`nombre` es obligatorio y no vacío.**
+2. `fecha_fin >= fecha_inicio` y ambas **de hoy en adelante**. Violación → `422 validation_failed`.
+3. `estado` inicial siempre `planning` (`POST` no acepta `estado`).
+4. `estado` ∈ `{ "planning", "activo", "cerrado" }` con **transición estricta sin saltos ni retrocesos**: `planning → activo → cerrado`. Violación → `422 invalid_transition`, estado persistido intacto.
+5. **Unicidad del sprint activo**: solo un sprint `activo` a la vez en el workspace "REP". Activar un segundo → `422 sprint_activo_duplicado`.
+6. **Regla de sprint no vacío**: activar exige al menos una `backlog_item` en estado `en_sprint` con `sprint_id` referenciando al sprint. Si no → `422 sprint_vacio`.
+7. **Snapshot solo sobre sprint activo**: si el sprint no está `activo` → `422 sprint_no_activo`.
+8. `fecha` del snapshot debe caer dentro del rango `[fecha_inicio, fecha_fin]` del sprint activo; `puntos_restantes` y `horas_restantes` enteros `>= 0`. Violación → `422 validation_failed`.
+9. **Unicidad por (sprint, fecha)**: un snapshot por día del sprint; duplicado → `422 snapshot_duplicado` (el snapshot existente queda intacto).
+10. El **cierre** solo se permite desde `activo`. Hoy el cierre no exige tareas sin `done`; ese bloqueo llega con el módulo Kanban (frontera futura).
+
+## Errores
+
+Mismo shape JSON API ya definido en el contrato de Backlog (ver arriba): `{"errors": [{status, code, title, detail, source}]}`. No se repite el body completo.
+
+Códigos nuevos de este módulo (los códigos `validation_failed`, `invalid_transition`, `not_found`, `malformed_request` del Backlog aplican igual aquí):
+
+| Código HTTP | `code`                    | Cuándo |
+|-------------|---------------------------|--------|
+| 422         | `sprint_activo_duplicado` | se intenta activar un sprint cuando ya existe uno `activo` |
+| 422         | `sprint_vacio`            | se intenta activar un sprint sin historias `en_sprint` asignadas |
+| 422         | `sprint_no_activo`        | se intenta registrar un snapshot sobre un sprint no `activo` |
+| 422         | `snapshot_duplicado`      | ya existe un snapshot para ese `(sprint, fecha)` |
+
+## Dependencias
+
+- **Frontera Backlog → Sprint**: el `BacklogItem` guarda `sprint_id` al transicionar a `en_sprint` (cubierto en `backlog.feature` `@S-AGL-03/04`). Sprint es **consumidor** de ese estado: solo lo verifica al activar (regla de sprint no vacío). Backlog no depende de Sprint.
+- **Frontera Sprint → Burndown** (futuro): el módulo Burndown será consumidor de los `daily_snapshots` (`puntos_restantes`, `horas_restantes` por fecha) para construir el chart.
+- **Frontera futura Kanban**: el cierre del sprint aún no exige tareas sin `done`; se limitará cuando llegue ese módulo.
+
+## Escenarios Gherkin que ejercitan este contrato
+
+Spec: `specs/agile/sprints.feature`
+
+- `@S-AGL-10` — crear sprint válido → `201`, `estado` inicial `planning`.
+- `@S-AGL-11` — crear sprint inválido (`nombre` vacío, `fecha_fin < fecha_inicio`, fechas pasadas) → `422 validation_failed`, nada creado.
+- `@S-AGL-12` — ciclo de vida completo en orden estricto: `planning → activo → cerrado` vía PATCH.
+- `@S-AGL-13` — transiciones inválidas (salto `planning → cerrado`, retrocesos `activo → planning`, `cerrado → activo`) → `422 invalid_transition`, estado intacto.
+- `@S-AGL-14` — activar un segundo sprint con otro ya `activo` → `422 sprint_activo_duplicado`.
+- `@S-AGL-15` — activar sprint sin historias asignadas → `422 sprint_vacio`.
+- `@S-AGL-16` — registrar daily snapshot válido sobre sprint `activo` → `201`.
+- `@S-AGL-17` — snapshot inválido: sprint no `activo` (`sprint_no_activo`), `fecha` fuera del rango, enteros negativos → `422 validation_failed`.
+- `@S-AGL-18` — segundo snapshot el mismo día del mismo sprint → `422 snapshot_duplicado`, el existente intacto.
+- `@S-AGL-19` — listar sprints con su estado y obtener uno por id → `200`.
