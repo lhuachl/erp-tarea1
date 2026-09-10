@@ -5,6 +5,7 @@
 #   "hoy"     = fecha actual
 #   "hoy + N" = hoy más N días
 #   "hoy - N" = hoy menos N días
+@wip
 Característica: Burndown chart y velocity del dominio ágil
   Como equipo de repostería en el workspace único (clave "REP")
   Quiero consultar el burndown de un sprint y la velocity histórica

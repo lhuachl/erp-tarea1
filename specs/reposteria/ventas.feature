@@ -4,6 +4,7 @@
 # Vocabulario de fechas relativas (estable en el tiempo, sin fechas fijas):
 #   "hoy"     = fecha actual
 #   "hoy + N" = hoy más N días
+@wip
 Característica: Gestión de ventas y pedidos
   Como personal de la repostería
   Quiero registrar pedidos con sus líneas, cobrarlos y seguir su estado

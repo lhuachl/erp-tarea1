@@ -5,6 +5,7 @@
 #   "hoy"     = fecha actual
 #   "hoy + N" = hoy más N días
 #   "hoy - N" = hoy menos N días
+@wip
 Característica: Órdenes de producción
   Como equipo de repostería
   Quiero planificar, avanzar, completar y dar de baja órdenes de producción

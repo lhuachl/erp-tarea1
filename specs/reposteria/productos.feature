@@ -1,5 +1,6 @@
 # language: es
 # Contrato de negocio del módulo Productos y recetas (BOM) del dominio repostería.
+@wip
 Característica: Productos y recetas (BOM)
   Como personal de la repostería
   Quiero gestionar productos y la receta de insumos que consume cada unidad
